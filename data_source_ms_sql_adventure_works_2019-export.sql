@@ -10,7 +10,7 @@
 
 
 /* Exported connections and data sources */
-EXEC SYSADMIN.importConnection("name" => 'mssql_advworks_2019', "jbossCLITemplateName" => 'mssql', "connectionOrResourceAdapterProperties" => 'user-name=sa,port=1433,host=alienck,db=AdventureWorks2019', "encryptedProperties" => 'password=SJs6IOj9wi0D47Rld0LOFw==') ;;
+EXEC SYSADMIN.importConnection("name" => 'mssql_advworks_2019', "jbossCLITemplateName" => 'mssql', "connectionOrResourceAdapterProperties" => 'user-name=sa,port=1433,host=alienck,db=AdventureWorks2019', "encryptedProperties" => 'password=secret') ;;
 EXEC SYSADMIN.importDataSource("name" => 'mssql_advworks_2019', "translator" => 'sqlserver', "modelProperties" => 'importer.useCatalogName=true,importer.excludeTables=(.*[.]sys[.].*|.*[.]INFORMATION_SCHEMA[.].*),importer.useFullSchemaName=true,importer.defaultSchema=dbo', "translatorProperties" => '', "encryptedModelProperties" => '', "encryptedTranslatorProperties" => '') ;;
 
 
