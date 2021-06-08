@@ -1,9 +1,9 @@
 /* Data Virtuality exported objects */
-/* Created: 31.05.21  16:22:45.750 */
-/* Server version: 2.4.5 */
-/* Build: 758e469 */
-/* Build date: 2021-05-11 */
-/* Exported by Studio ver.2.4.5 (rev.3925037). Build date is 2021-05-11. */
+/* Created: 08.06.21  14:18:26.100 */
+/* Server version: 2.4.6 */
+/* Build: ce8ff20 */
+/* Build date: 2021-05-28 */
+/* Exported by Studio ver.2.4.6 (rev.cb1b700). Build date is 2021-05-28. */
 /* Please set statement separator to ;; before importing */
 
 
@@ -94,10 +94,10 @@ EXEC SYSADMIN.importView("text" => 'create view "metadata"."_RawResourceDependen
 as
 select * from (call "SYSADMIN.getResourceDependencies"("resourceName" => ''*'')) as a') ;;
 
-EXEC SYSADMIN.importView("text" => 'create view metadata."_RawViewDefinitions" as
+EXEC SYSADMIN.importView("text" => 'CREATE view metadata."_RawViewDefinitions" as
 SELECT
      vd.id
-    ,vd.name as SchemaPlusName
+    ,vd.name as SchemaDotName
     ,vd.definition
     ,vd.creationDate
     ,vd.lastModifiedDate
@@ -190,7 +190,7 @@ SELECT
     ,p.Description
     ,p.SchemaUID
     ,pd.id
-    ,pd.name
+    ,pd.name as SchemaDotName
     ,pd.definition
     ,pd.creationDate
     ,pd.lastModifiedDate
@@ -325,6 +325,108 @@ begin
 	call "dwh.native"("request" => ''CALL dwh_dv_2_4_5.update_parent_child_relationships();'');
 end') ;;
 
+EXEC SYSADMIN.importProcedure("text" => 'create procedure metadata.searchMetadata_standalone(searchTerm string) 
+returns(
+	SchemaName string, 
+	TableName string, 
+	ColumnName string, 
+	ProcedureName string, 
+	Type string,
+	Description string,
+	SchemaUID string,
+	TableUID string,
+	ColumnUID string,
+	ProcedureUID string,
+	JobUID string
+) as
+begin
+declare string srchTerm = lower(''%'' || searchTerm || ''%'');
+
+SELECT distinct Name as SchemaName, null as TableName, null as ColumnName, null as ProcedureName,
+	''Schema'' as Type, Description, UID as SchemaUID, null as TableUID, null as ColumnUID, null as ProcedureUID,
+	null as JobUID
+FROM SYS.Schemas
+where 
+	lower(Name) like srchTerm or 
+	lower(Description) like srchTerm
+
+union
+
+SELECT distinct SchemaName, t.Name as TableName, null as ColumnName, null as ProcedureName,
+	Type, Description, SchemaUID, UID as TableUID, null as ColumnUID, null as ProcedureUID,
+	null as JobUID
+FROM
+    SYS.Tables t
+    join SYSADMIN.ViewDefinitions vd
+    	on (t.SchemaName || ''.'' || t.Name) = vd.name
+where 
+	lower(t.Name) like srchTerm or 
+	lower(definition) like srchTerm or
+	lower(Description) like srchTerm
+
+union
+
+SELECT distinct SchemaName, Name as TableName, null as ColumnName, null as ProcedureName,
+	Type, Description, SchemaUID, UID as TableUID, null as ColumnUID, null as ProcedureUID,
+	null as JobUID
+FROM SYS.Tables
+where
+	Type = ''Table'' and (
+		lower(Name) like srchTerm or 
+		lower(Description) like srchTerm
+	)
+
+union
+
+SELECT distinct icol.table_schema as SchemaName, icol.table_name as TableName, icol.column_name as ColumnName, null as ProcedureName,
+	''Column'' as Type, scol.Description, t.SchemaUID, scol.TableUID, scol.UID as ColumnUID, null as ProcedureUID,
+	null as JobUID
+FROM 
+    INFORMATION_SCHEMA.columns icol 
+	join SYS.Columns scol
+		on lower(icol.table_catalog) = lower(scol.VDBName) and
+			lower(icol.table_schema) = lower(scol.SchemaName) and
+			lower(icol.table_name) = lower(scol.TableName) and
+			lower(icol.column_name) = lower(scol.Name)
+	join SYS.Tables t
+		on t.UID = scol.TableUID	
+where
+	lower(icol.column_name) like srchTerm or 
+	lower(scol.Description) like srchTerm
+
+union
+
+SELECT distinct SchemaName, null as TableName, null as ColumnName, p.Name as ProcedureName,
+	''Procedure'' as Type, Description, SchemaUID, null as TableUID, null as ColumnUID, UID as ProcedureUID,
+	null as JobUID
+FROM
+    SYSADMIN.ProcDefinitions pd
+    join SYS.Procedures p
+		on (p.SchemaName || ''.'' || p.Name) = pd.name
+where
+	lower(p.name) like srchTerm or 
+	lower(Definition) like srchTerm or 
+	lower(Description) like srchTerm
+
+union
+
+SELECT distinct null as SchemaName, null as TableName, null as ColumnName, null as ProcedureName,
+	''Job'' as Type, Description, null as SchemaUID, null as TableUID, null as ColumnUID, null as ProcedureUID,
+	jobName as JobUID
+FROM SYSADMIN.ScheduleJobs
+where
+	lower(jobType) like srchTerm or 
+	lower(description) like srchTerm or 
+	lower(script) like srchTerm or 
+	lower(newRowCheckExpression) like srchTerm or 
+	lower(identityExpression) like srchTerm or 
+	lower(lastExecutionStatus) like srchTerm or 
+	lower(lastExecutionFailureReason) like srchTerm
+--	lower(lastWarnings) like srchTerm
+;
+
+end') ;;
+
 EXEC SYSADMIN.importView("text" => 'CREATE view "metadata"."_RawForeignKeys" as
 /*
 importedKeyCascade 	0
@@ -450,6 +552,14 @@ FROM
     left join metadata."_RawColumns" tgt
 		on dl.hashkey_target_schema_table_column = tgt.hashkey_schema_table_column') ;;
 
+EXEC SYSADMIN.importView("text" => 'CREATE view "metadata"."DataLineageSourceProperties" as
+select 
+	* 
+from 
+	dwh.tblDataLineage dl
+	left join metadata."_RawColumns" cp
+		on dl.hashkey_source_schema_table_column = cp.hashkey_schema_table_column') ;;
+
 EXEC SYSADMIN.importProcedure("text" => 'CREATE procedure metadata.searchMetadata(searchTerm string) 
 returns(
 	SchemaName string, 
@@ -461,13 +571,15 @@ returns(
 	SchemaUID string,
 	TableUID string,
 	ColumnUID string,
-	ProcedureUID string
+	ProcedureUID string,
+	JobUID string
 ) as
 begin
 declare string srchTerm = lower(''%'' || searchTerm || ''%'');
 
 SELECT distinct Name as SchemaName, null as TableName, null as ColumnName, null as ProcedureName,
-	''Schema'' as Type, Description, UID as SchemaUID, null as TableUID, null as ColumnUID, null as ProcedureUID
+	''Schema'' as Type, Description, UID as SchemaUID, null as TableUID, null as ColumnUID, null as ProcedureUID,
+	null as JobUID
 FROM SYS.Schemas
 where 
 	lower(Name) like srchTerm or 
@@ -476,7 +588,8 @@ where
 union
 
 SELECT distinct SchemaName, Name as TableName, null as ColumnName, null as ProcedureName,
-	Type, Description, SchemaUID, UID as TableUID, null as ColumnUID, null as ProcedureUID
+	Type, Description, SchemaUID, UID as TableUID, null as ColumnUID, null as ProcedureUID,
+	null as JobUID
 FROM metadata."_RawViewDefinitions"
 where 
 	lower(Name) like srchTerm or 
@@ -486,7 +599,8 @@ where
 union
 
 SELECT distinct SchemaName, Name as TableName, null as ColumnName, null as ProcedureName,
-	Type, Description, SchemaUID, UID as TableUID, null as ColumnUID, null as ProcedureUID
+	Type, Description, SchemaUID, UID as TableUID, null as ColumnUID, null as ProcedureUID,
+	null as JobUID
 FROM SYS.Tables
 where
 	Type = ''Table'' and (
@@ -497,7 +611,8 @@ where
 union
 
 SELECT distinct table_schema as SchemaName, table_name as TableName, column_name as ColumnName, null as ProcedureName,
-	''Column'' as Type, Description, SchemaUID, TableUID, UID as ColumnUID, null as ProcedureUID
+	''Column'' as Type, Description, SchemaUID, TableUID, UID as ColumnUID, null as ProcedureUID,
+	null as JobUID
 FROM metadata."_RawColumns"
 where
 	lower(column_name) like srchTerm or 
@@ -506,11 +621,29 @@ where
 union
 
 SELECT distinct SchemaName, null as TableName, null as ColumnName, Name as ProcedureName,
-	''Procedure'' as Type, Description, SchemaUID, null as TableUID, null as ColumnUID, UID as ProcedureUID
+	''Procedure'' as Type, Description, SchemaUID, null as TableUID, null as ColumnUID, UID as ProcedureUID,
+	null as JobUID
 FROM metadata."_RawProcedureDefinitions"
 where
 	lower(name) like srchTerm or 
+	lower(Definition) like srchTerm or 
 	lower(Description) like srchTerm
+
+union
+
+SELECT distinct null as SchemaName, null as TableName, null as ColumnName, null as ProcedureName,
+	''Job'' as Type, Description, null as SchemaUID, null as TableUID, null as ColumnUID, null as ProcedureUID,
+	jobName as JobUID
+FROM SYSADMIN.ScheduleJobs
+where
+	lower(jobType) like srchTerm or 
+	lower(description) like srchTerm or 
+	lower(script) like srchTerm or 
+	lower(newRowCheckExpression) like srchTerm or 
+	lower(identityExpression) like srchTerm or 
+	lower(lastExecutionStatus) like srchTerm or 
+	lower(lastExecutionFailureReason) like srchTerm or 
+	lower(lastWarnings) like srchTerm
 ;
 
 end') ;;
@@ -632,14 +765,6 @@ begin
 
 
 end') ;;
-
-EXEC SYSADMIN.importView("text" => 'CREATE view "metadata"."DataLineageSourceProperties" as
-select 
-	* 
-from 
-	dwh.tblDataLineage dl
-	left join metadata."_RawColumns" cp
-		on dl.hashkey_source_schema_table_column = cp.hashkey_schema_table_column') ;;
 
 
 
